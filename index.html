@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<title>formula</title>
+		<link href='http://fonts.googleapis.com/css?family=Ubuntu+Mono|Indie+Flower' rel='stylesheet' type='text/css'>
+		<style type="text/css">
+			*
+			{
+				color:#EEEEEE;
+				overflow:hidden;
+			}
+
+			body
+			{
+				background:#222222;
+			}
+
+			a
+			{
+				color:#88FFAA;
+				font-weight:bold;
+			}
+
+			.formula
+			{
+				border:0;
+				background:#444444;
+				width:160px;
+				height:12px;
+				padding:3px;
+				margin:2px;
+				text-align:left;
+				font-size:8px;
+				font-family:'Ubuntu Mono';
+				border-radius:2px;
+			}
+
+			.param
+			{
+				border:0;
+				background:#444444;
+				width:20px;
+				height:12px;
+				padding:3px;
+				margin:2px;
+				text-align:left;
+				font-size:8px;
+				font-family:'Ubuntu Mono';
+				border-radius:2px;
+			}
+
+			.formulas
+			{
+				position:absolute;
+				width:200px;
+			}
+
+			#head
+			{
+				position:absolute;
+				text-align:center;
+				top:0px;
+				left:0px;
+				background:#000000;
+				height:32px;
+				padding:0px;
+				width:100%;
+			}
+
+			#bpm
+			{
+				border:0;
+				background:#444444;
+				text-align:center;
+				width:40px;
+				height:20px;
+				padding:2px;
+				margin:4px;
+				font-size:18px;
+				font-family:'Ubuntu Mono';
+			}
+
+			#memo
+			{
+				position:absolute;
+				top:600px;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="head">
+			<input id="bpm" value="">
+		</div>
+		<div id="formulas,0" class="formulas"></div>
+		<div id="formulas,1" class="formulas"></div>
+		<div id="formulas,2" class="formulas"></div>
+		<div id="formulas,3" class="formulas"></div>
+		<br>
+		<div id="memo">
+		noise : rnd*2-1<br>
+		sin : sin(t*440*2*PI)<br>
+		saw : t*440%1*2-1<br>
+		square : t*440%1<.5?-1:1<br>
+		kick : sin(exp((1-t*9)*4))<br>
+		hihat : (rnd*2-1)*exp(-t*29)<br>
+		fm bell : sin(t*PI*440+sin(t*PI*440*11)*exp(-t*29))<br>
+		</div>
+		<script>
+			function id(_i){return document.getElementById(_i);}
+
+			window.AudioContext = window.AudioContext||window.webkitAudioContext;
+			audio = new AudioContext();
+
+			// データを読み込みor作成
+			var data = JSON.parse(localStorage.getItem('formulaData')); // データ群
+			if(!data){
+				data = {
+					formula : [
+						['','','','','','','','','','','','','','','',''],
+						['','','','','','','','','','','','','','','',''],
+						['','','','','','','','','','','','','','','',''],
+						['','','','','','','','','','','','','','','','']
+					],
+					param : [
+						[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+						[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+						[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+						[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+					],
+					pan : [.5,.5,.5,.5],
+					vol : [.5,.5,.5,.5],
+					glide : [.5,.5,.5,.5],
+					bpm:140,
+				};
+			}
+
+			var src = []; // bufferSource、音源
+			for(var c=0; c<4; c++){
+				src[c] = [];
+				for(var s=0; s<16; s++){
+					src[c][s] = audio.createBufferSource();
+					src[c][s].start();
+				}
+			}
+
+			var vol = [];
+			for(var c=0; c<4; c++){
+				vol[c] = audio.createGain();
+				vol[c].connect(audio.destination);
+				vol[c].gain.value = 0;
+			}
+
+			var pan = [];
+			for(var c=0; c<4; c++){
+				pan[c] = audio.createPanner();
+				pan[c].connect(vol[c]);
+				pan[c].panningModel = 0;
+				pan[c].setPosition(0,0,-1);
+			}
+
+			var gain = []; // gain、音源直接止めるとプチプチ鳴る
+			for(var c=0; c<4; c++){
+				gain[c] = [];
+				for(var s=0; s<16; s++){
+					gain[c][s] = audio.createGain();
+					gain[c][s].connect(pan[c]);
+					gain[c][s].gain.value = 0;
+				}
+			}
+
+			var buffers = []; // buffer、サンプルを格納しておく
+			for(var c=0; c<4; c++){
+				buffers[c] = [];
+				for(var s=0; s<16; s++){
+					buffers[c][s] = audio.createBuffer(1,audio.sampleRate,audio.sampleRate);
+				}
+			}
+
+			var worker = new Worker('worker.js');
+			function work(_c,_s){
+				id('formula,'+_c+','+_s).style.color = '#999999';
+				console.log(pitch(data.param[_c][_s]));
+				console.log(pitch(data.param[_c][(_s+15)%16]));
+				worker.postMessage({
+					func : data.formula[_c][_s],
+					param : pitch(data.param[_c][_s]),
+					paramp : pitch(data.param[_c][(_s+15)%16]),
+					glide : data.glide[_c],
+					c : _c,
+					s : _s,
+					samplerate : audio.sampleRate,
+				});
+			}
+			worker.onmessage = function(_e){
+				if(_e.data.error){
+					id('formula,'+_e.data.c+','+_e.data.s).style.color = '#FF99CC';
+					console.log(_e.data.error);
+				}
+				else{
+					buffers[_e.data.c][_e.data.s] = (function(){
+						var buffer = audio.createBuffer(1,audio.sampleRate,audio.sampleRate);
+						var wave = buffer.getChannelData(0);
+						for(var i=0; i<audio.sampleRate; i++){
+							wave[i] = _e.data.wave[i];
+						}
+						return buffer;
+					})();
+					id('formula,'+_e.data.c+','+_e.data.s).style.color = '#FFFFFF';
+				}
+			}
+
+			function pitch(_i){
+				switch(typeof(_i)){
+					case 'number' : return _i; break;
+					case 'boolean' : return _i?1:0; break;
+					case 'string' : break;
+					default : return 0; break;
+				}
+				if(/[A-Ga-g]/.test(_i.substring(0,1))){
+					var pit = 3;
+					var oct = 0;
+					if(_i.substring(1,2) == '#'){
+						pit += 1;
+						oct = Number(_i.substring(2));
+					}
+					else{
+						oct = Number(_i.substring(1));
+					}
+					switch(_i.substring(0,1)){
+						case 'C' : case 'c' : break;
+						case 'D' : case 'd' : pit += 2; break;
+						case 'E' : case 'e' : pit += 4; break;
+						case 'F' : case 'f' : pit += 5; break;
+						case 'G' : case 'g' : pit += 7; break;
+						case 'A' : case 'a' : pit += 9; break;
+						case 'B' : case 'b' : pit += 11; break;
+					}
+
+					return 13.75*Math.pow(2,pit/12+oct);
+				}
+				else if(/[0-9]/.test(_i.substring(0,1))){
+					return Number(_i);
+				}
+			}
+
+			// 要素を生成
+			for(var c=0; c<4; c++){
+				for(var s=0; s<16; s++){
+					// 数式
+					(function(){
+						var element = document.createElement('input');
+						element.type = 'text';
+						element.value = data.formula[c][s];
+						element.className = 'formula';
+						element.id = 'formula,'+c+','+s;
+						element.onkeydown = function(_e){
+							this.style.color = '#99FFCC';
+							if(_e.keyCode == 13){confirm(_e);}
+						}
+						element.onblur = confirm;
+
+						function confirm(_e){
+							var c = _e.target.id.split(',')[1];
+							var s = _e.target.id.split(',')[2];
+							data.formula[c][s] = _e.target.value;
+							work(c,s);
+							localStorage.setItem('formulaData',JSON.stringify(data));
+						}
+
+						id('formulas,'+c).appendChild(element);
+					}());
+
+					// パラメータ
+					(function(){
+						var element = document.createElement('input');
+						element.type = 'text';
+						element.value = data.param[c][s];
+						element.className = 'param';
+						element.id = 'param,'+c+','+s;
+						element.onkeydown = function(_e){
+							this.style.color = '#99FFCC';
+							if(_e.keyCode == 13){confirm(_e);}
+						}
+						element.onblur = confirm;
+
+						function confirm(_e){
+							var c = _e.target.id.split(',')[1];
+							var s = _e.target.id.split(',')[2];
+							_e.target.style.color = '#FFFFFF';
+							data.param[c][s] = _e.target.value;
+							work(c,s);
+							work(c,(Number(s)+1)%16);
+							localStorage.setItem('formulaData',JSON.stringify(data));
+						}
+
+						id('formulas,'+c).appendChild(element);
+					}());
+				}
+
+				// パン
+				(function(){
+					var element = document.createElement('input');
+					element.type = 'range';
+					element.className = 'pan';
+					element.id = 'pan,'+c;
+					element.max = 1;
+					element.step = .001;
+					element.value = data.pan[c];
+					element.onmousemove = confirm;
+					element.ondblclick = function(_e){
+						_e.target.value = .5;
+						confirm(_e);
+					}
+
+					function confirm(_e){
+						var c = _e.target.id.split(',')[1];
+						var p = (_e.target.valueAsNumber-.5)*Math.PI;
+						pan[c].setPosition(Math.sin(p),0,-Math.cos(p));
+						data.pan[c] = _e.target.valueAsNumber;
+						localStorage.setItem('formulaData',JSON.stringify(data));
+					}
+
+					var p = (data.pan[c]-.5)*Math.PI;
+					pan[c].setPosition(Math.sin(p),0,-Math.cos(p));
+
+					id('formulas,'+c).appendChild(element);
+				}());
+
+				// ボリューム
+				(function(){
+					var element = document.createElement('input');
+					element.type = 'range';
+					element.className = 'vol';
+					element.id = 'vol,'+c;
+					element.max = 1;
+					element.step = .001;
+					element.value = data.vol[c];
+					element.onmousemove = confirm;
+					element.ondblclick = function(_e){
+						_e.target.value = .5;
+						confirm(_e);
+					}
+
+					function confirm(_e){
+						var c = _e.target.id.split(',')[1];
+						var v = (_e.target.valueAsNumber-.5)*.2;
+						vol[c].gain.setValueAtTime(v,0);
+						data.vol[c] = _e.target.valueAsNumber;
+						localStorage.setItem('formulaData',JSON.stringify(data));
+					}
+
+					var v = (data.vol[c]-.5)*.2;
+					vol[c].gain.setValueAtTime(v,0);
+
+					id('formulas,'+c).appendChild(element);
+				}());
+
+				// グライド
+				(function(){
+					var element = document.createElement('input');
+					element.type = 'range';
+					element.className = 'glide';
+					element.id = 'glide,'+c;
+					element.max = 1;
+					element.step = .001;
+					element.value = data.glide[c];
+					element.onchange = confirm;
+					element.ondblclick = function(_e){
+						_e.target.value = .5;
+						confirm(_e);
+					}
+
+					function confirm(_e){
+						var c = _e.target.id.split(',')[1];
+						data.glide[c] = _e.target.valueAsNumber;
+						for(var s=0; s<16; s++){
+							work(c,s);
+						}
+						localStorage.setItem('formulaData',JSON.stringify(data));
+					}
+
+					id('formulas,'+c).appendChild(element);
+				}());
+			}
+
+			for(var c=0; c<4; c++){
+				for(var s=0; s<16; s++){
+					work(c,s);
+				}
+			}
+
+			function go(_c,_s){
+				gain[_c][_s].gain.cancelScheduledValues(0);
+				gain[_c][_s].gain.setTargetAtTime(1,0,1E-4);
+
+				src[_c][_s].stop();
+
+				src[_c][_s] = audio.createBufferSource();
+				src[_c][_s].buffer = buffers[_c][_s];
+
+				src[_c][_s].connect(gain[_c][_s]);
+				src[_c][_s].start(0);
+			}
+
+			var prev = +new Date();
+			var step = 15; // 現在のステップ数、いきなりインクリメントしちゃうので0の前である15
+
+			var bpm = data.bpm;
+			if(!bpm)bpm = 140;
+			id('bpm').value = bpm;
+			var intrv = 60000/bpm/4;
+
+			id('bpm').onkeydown = function(_e){
+				id('bpm').style.color = '#99FFCC';
+				if(_e.keyCode == 13){confirmBpm();}
+			}
+
+			id('bpm').onblur = confirmBpm;
+
+			function confirmBpm(){
+				bpm = id('bpm').value;
+				data.bpm = bpm;
+				localStorage.setItem('formulaData',JSON.stringify(data));
+				intrv = 60000/bpm/4;
+				if(0<bpm && !isNaN(bpm)){
+					id('bpm').style.color = '#FFFFFF';
+				}
+				else{
+					id('bpm').style.color = '#FF99CC';
+				}
+			}
+
+			function loop(){
+				if(0<bpm && !isNaN(bpm)){ // BPMが0以下だったりするとヤバイ
+					if(prev+intrv < +new Date()){
+						while(prev+intrv < +new Date()){
+							prev += intrv;
+						}
+						for(var c=0; c<4; c++){
+							gain[c][step].gain.cancelScheduledValues(0);
+							gain[c][step].gain.setTargetAtTime(0,0,1E-3);
+							id('formula,'+c+','+step).style.background = '#444444';
+							id('param,'+c+','+step).style.background = '#444444';
+						}
+
+						step = (++step)%16;
+
+						for(var c=0; c<4; c++){
+							go(c,step);
+							id('formula,'+c+','+step).style.background = '#666666';
+							id('param,'+c+','+step).style.background = '#666666';
+						}
+					}
+				}
+				setTimeout('loop()',4);
+			}
+			loop();
+
+			function resize(){
+				var W = window.innerWidth;
+				var H = window.innerHeight;
+				id('formulas,0').style.left = W/2-400+'px';
+				id('formulas,0').style.top = 32+'px';
+				id('formulas,1').style.left = W/2-200+'px';
+				id('formulas,1').style.top = 32+'px';
+				id('formulas,2').style.left = W/2+'px';
+				id('formulas,2').style.top = 32+'px';
+				id('formulas,3').style.left = W/2+200+'px';
+				id('formulas,3').style.top = 32+'px';
+			}
+			resize();
+			window.onresize = resize;
+		</script>
+	</body>
+</html>
