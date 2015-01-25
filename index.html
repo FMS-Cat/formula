@@ -23,38 +23,39 @@
 				font-weight:bold;
 			}
 
-			.formula
+			.textInput
 			{
 				border:0;
 				background:#444444;
+				font-family:'Ubuntu Mono';
+				border-radius:2px;
+			}
+
+			.formula
+			{
 				width:160px;
 				height:12px;
 				padding:3px;
 				margin:2px;
 				text-align:left;
 				font-size:8px;
-				font-family:'Ubuntu Mono';
-				border-radius:2px;
 			}
 
 			.param
 			{
-				border:0;
-				background:#444444;
 				width:20px;
 				height:12px;
 				padding:3px;
 				margin:2px;
 				text-align:left;
 				font-size:8px;
-				font-family:'Ubuntu Mono';
-				border-radius:2px;
 			}
 
 			.formulas
 			{
 				position:absolute;
 				width:200px;
+				top:72px;
 			}
 
 			#head
@@ -64,22 +65,19 @@
 				top:0px;
 				left:0px;
 				background:#000000;
-				height:32px;
+				height:64px;
 				padding:0px;
 				width:100%;
 			}
 
-			#bpm
+			.headInput
 			{
-				border:0;
-				background:#444444;
 				text-align:center;
-				width:40px;
-				height:20px;
+				width:60px;
+				height:30px;
 				padding:2px;
-				margin:4px;
+				margin:8px;
 				font-size:18px;
-				font-family:'Ubuntu Mono';
 			}
 
 			#memo
@@ -91,7 +89,11 @@
 	</head>
 	<body>
 		<div id="head">
-			<input id="bpm" value="">
+			<input class="textInput headInput" id="bpm" value="">
+			<input class="textInput headInput" id="sample" value="">
+			<input class="textInput headInput" id="sampleRate" value="">
+			<input class="textInput headInput" type="button" id="save" onclick="save()" value="save">
+			<input class="textInput headInput" type="button" id="load" onclick="load()" value="load">
 		</div>
 		<div id="formulas,0" class="formulas"></div>
 		<div id="formulas,1" class="formulas"></div>
@@ -133,6 +135,8 @@
 					vol : [.5,.5,.5,.5],
 					glide : [.5,.5,.5,.5],
 					bpm:140,
+					sample:8000,
+					sampleRate:44100,
 				};
 			}
 
@@ -174,23 +178,22 @@
 			for(var c=0; c<4; c++){
 				buffers[c] = [];
 				for(var s=0; s<16; s++){
-					buffers[c][s] = audio.createBuffer(1,audio.sampleRate,audio.sampleRate);
+					buffers[c][s] = audio.createBuffer(1,data.sample,data.sampleRate);
 				}
 			}
 
 			var worker = new Worker('worker.js');
 			function work(_c,_s){
 				id('formula,'+_c+','+_s).style.color = '#999999';
-				console.log(pitch(data.param[_c][_s]));
-				console.log(pitch(data.param[_c][(_s+15)%16]));
 				worker.postMessage({
 					func : data.formula[_c][_s],
 					param : pitch(data.param[_c][_s]),
-					paramp : pitch(data.param[_c][(_s+15)%16]),
+					paramp : pitch(data.param[_c][(Number(_s)+15)%16]),
 					glide : data.glide[_c],
 					c : _c,
 					s : _s,
-					samplerate : audio.sampleRate,
+					sample : data.sample,
+					sampleRate : data.sampleRate,
 				});
 			}
 			worker.onmessage = function(_e){
@@ -200,9 +203,9 @@
 				}
 				else{
 					buffers[_e.data.c][_e.data.s] = (function(){
-						var buffer = audio.createBuffer(1,audio.sampleRate,audio.sampleRate);
+						var buffer = audio.createBuffer(1,data.sample,data.sampleRate);
 						var wave = buffer.getChannelData(0);
-						for(var i=0; i<audio.sampleRate; i++){
+						for(var i=0; i<data.sample; i++){
 							wave[i] = _e.data.wave[i];
 						}
 						return buffer;
@@ -253,7 +256,7 @@
 						var element = document.createElement('input');
 						element.type = 'text';
 						element.value = data.formula[c][s];
-						element.className = 'formula';
+						element.className = 'formula textInput';
 						element.id = 'formula,'+c+','+s;
 						element.onkeydown = function(_e){
 							this.style.color = '#99FFCC';
@@ -277,7 +280,7 @@
 						var element = document.createElement('input');
 						element.type = 'text';
 						element.value = data.param[c][s];
-						element.className = 'param';
+						element.className = 'param textInput';
 						element.id = 'param,'+c+','+s;
 						element.onkeydown = function(_e){
 							this.style.color = '#99FFCC';
@@ -345,13 +348,13 @@
 
 					function confirm(_e){
 						var c = _e.target.id.split(',')[1];
-						var v = (_e.target.valueAsNumber-.5)*.2;
+						var v = (_e.target.valueAsNumber-.5)*.6;
 						vol[c].gain.setValueAtTime(v,0);
 						data.vol[c] = _e.target.valueAsNumber;
 						localStorage.setItem('formulaData',JSON.stringify(data));
 					}
 
-					var v = (data.vol[c]-.5)*.2;
+					var v = (data.vol[c]-.5)*.6;
 					vol[c].gain.setValueAtTime(v,0);
 
 					id('formulas,'+c).appendChild(element);
@@ -385,11 +388,82 @@
 				}());
 			}
 
-			for(var c=0; c<4; c++){
-				for(var s=0; s<16; s++){
-					work(c,s);
+			// BPM
+			(function(){
+				id('bpm').value = data.bpm;
+
+				id('bpm').onkeydown = function(_e){
+					id('bpm').style.color = '#99FFCC';
+					if(_e.keyCode == 13){confirm();}
+				}
+
+				function confirm(){
+					var v = id('bpm').value;
+					if(0<v && !isNaN(v)){
+						data.bpm = v;
+						localStorage.setItem('formulaData',JSON.stringify(data));
+						id('bpm').style.color = '#FFFFFF';
+					}
+					else{
+						id('bpm').style.color = '#FF99CC';
+					}
+				}
+			}());
+
+			// サンプル
+			(function(){
+				id('sample').value = data.sample;
+
+				id('sample').onkeydown = function(_e){
+					id('sample').style.color = '#99FFCC';
+					if(_e.keyCode == 13){confirm();}
+				}
+
+				function confirm(){
+					var v = id('sample').value;
+					if(0<v && !isNaN(v)){
+						data.sample = v;
+						localStorage.setItem('formulaData',JSON.stringify(data));
+						workAll();
+						id('sample').style.color = '#FFFFFF';
+					}
+					else{
+						id('sample').style.color = '#FF99CC';
+					}
+				}
+			}());
+
+			// サンプルレート
+			(function(){
+				id('sampleRate').value = data.sampleRate;
+
+				id('sampleRate').onkeydown = function(_e){
+					id('sampleRate').style.color = '#99FFCC';
+					if(_e.keyCode == 13){confirm();}
+				}
+
+				function confirm(){
+					var v = id('sampleRate').value;
+					if(3000<=v && v<=192000 && !isNaN(v)){
+						data.sampleRate = v;
+						localStorage.setItem('formulaData',JSON.stringify(data));
+						workAll();
+						id('sampleRate').style.color = '#FFFFFF';
+					}
+					else{
+						id('sampleRate').style.color = '#FF99CC';
+					}
+				}
+			}());
+
+			function workAll(){
+				for(var c=0; c<4; c++){
+					for(var s=0; s<16; s++){
+						work(c,s);
+					}
 				}
 			}
+			workAll();
 
 			function go(_c,_s){
 				gain[_c][_s].gain.cancelScheduledValues(0);
@@ -407,33 +481,9 @@
 			var prev = +new Date();
 			var step = 15; // 現在のステップ数、いきなりインクリメントしちゃうので0の前である15
 
-			var bpm = data.bpm;
-			if(!bpm)bpm = 140;
-			id('bpm').value = bpm;
-			var intrv = 60000/bpm/4;
-
-			id('bpm').onkeydown = function(_e){
-				id('bpm').style.color = '#99FFCC';
-				if(_e.keyCode == 13){confirmBpm();}
-			}
-
-			id('bpm').onblur = confirmBpm;
-
-			function confirmBpm(){
-				bpm = id('bpm').value;
-				data.bpm = bpm;
-				localStorage.setItem('formulaData',JSON.stringify(data));
-				intrv = 60000/bpm/4;
-				if(0<bpm && !isNaN(bpm)){
-					id('bpm').style.color = '#FFFFFF';
-				}
-				else{
-					id('bpm').style.color = '#FF99CC';
-				}
-			}
-
 			function loop(){
-				if(0<bpm && !isNaN(bpm)){ // BPMが0以下だったりするとヤバイ
+				if(0<data.bpm && !isNaN(data.bpm)){ // BPMが0以下だったりするとヤバイ
+					var intrv = 60000/data.bpm/4;
 					if(prev+intrv < +new Date()){
 						while(prev+intrv < +new Date()){
 							prev += intrv;
@@ -458,17 +508,59 @@
 			}
 			loop();
 
+			function refresh(){
+				for(var c=0; c<4; c++){
+					for(var s=0; s<16; s++){
+						id('formula,'+c+','+s).value = data.formula[c][s];
+						id('param,'+c+','+s).value = data.param[c][s];
+					}
+					id('pan,'+c).value = data.pan[c];
+					var p = (data.pan[c]-.5)*Math.PI;
+					pan[c].setPosition(Math.sin(p),0,-Math.cos(p));
+					id('vol,'+c).value = data.vol[c];
+					var v = (data.vol[c]-.5)*.6;
+					vol[c].gain.setValueAtTime(v,0);
+					id('glide,'+c).value = data.glide[c];
+				}
+				id('bpm').value = data.bpm;
+				id('sample').value = data.sample;
+				id('sampleRate').value = data.sampleRate;
+			}
+
+			function load(){
+				var input = document.createElement('input');
+				input.value = '';
+				input.type = 'file';
+				input.addEventListener('change',function(_e){
+					var reader = new FileReader();
+					reader.readAsText(_e.target.files[0]);
+					reader.onload = function(_e){
+						data = JSON.parse(reader.result);
+						console.log(JSON.parse(reader.result));
+						workAll();
+						refresh();
+					}
+				});
+				input.click();
+			}
+
+			function save(){
+				var a = document.createElement('a');
+				var blob = new Blob([JSON.stringify(data)],{type:"application/json"});
+				var url = URL.createObjectURL(blob);
+				a.href = url;
+				a.download = 'formula'+(+new Date())+'.json';
+				a.click();
+				URL.revokeObjectURL(url);
+			}
+
 			function resize(){
 				var W = window.innerWidth;
 				var H = window.innerHeight;
 				id('formulas,0').style.left = W/2-400+'px';
-				id('formulas,0').style.top = 32+'px';
 				id('formulas,1').style.left = W/2-200+'px';
-				id('formulas,1').style.top = 32+'px';
 				id('formulas,2').style.left = W/2+'px';
-				id('formulas,2').style.top = 32+'px';
 				id('formulas,3').style.left = W/2+200+'px';
-				id('formulas,3').style.top = 32+'px';
 			}
 			resize();
 			window.onresize = resize;
