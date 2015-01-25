@@ -102,12 +102,13 @@
 		<br>
 		<div id="memo">
 		noise : rnd*2-1<br>
-		sin : sin(t*440*2*PI)<br>
-		saw : t*440%1*2-1<br>
-		square : t*440%1<.5?-1:1<br>
+		sin : sin(x*2*PI)<br>
+		saw : x%1*2-1<br>
+		square : x%1<.5?-1:1<br>
+		fm bell : sin(x*PI+sin(x*PI*11)*exp(-t*29))<br>
 		kick : sin(exp((1-t*9)*4))<br>
 		hihat : (rnd*2-1)*exp(-t*29)<br>
-		fm bell : sin(t*PI*440+sin(t*PI*440*11)*exp(-t*29))<br>
+		snare : (noise(floor(t*5000)%256)*2-1)*exp(-t*19)<br>
 		</div>
 		<script>
 			function id(_i){return document.getElementById(_i);}
@@ -215,11 +216,8 @@
 			}
 
 			function pitch(_i){
-				switch(typeof(_i)){
-					case 'number' : return _i; break;
-					case 'boolean' : return _i?1:0; break;
-					case 'string' : break;
-					default : return 0; break;
+				if(typeof(_i) != 'string'){
+					return 0;
 				}
 				if(/[A-Ga-g]/.test(_i.substring(0,1))){
 					var pit = 3;
@@ -243,7 +241,7 @@
 
 					return 13.75*Math.pow(2,pit/12+oct);
 				}
-				else if(/[0-9]/.test(_i.substring(0,1))){
+				else if(/[0-9.]/.test(_i.substring(0,1))){
 					return Number(_i);
 				}
 			}
