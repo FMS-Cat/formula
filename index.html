@@ -117,9 +117,9 @@
 			audio = new AudioContext();
 
 			// データを読み込みor作成
-			var data = JSON.parse(localStorage.getItem('formulaData')); // データ群
-			if(!data){
-				data = {
+			var data = loadData(
+				JSON.parse(localStorage.getItem('formulaData')), // データ群
+				{
 					formula : [
 						['','','','','','','','','','','','','','','',''],
 						['','','','','','','','','','','','','','','',''],
@@ -134,12 +134,13 @@
 					],
 					pan : [.5,.5,.5,.5],
 					vol : [.5,.5,.5,.5],
-					glide : [.5,.5,.5,.5],
-					bpm:140,
-					sample:8000,
-					sampleRate:44100,
-				};
-			}
+					glide : [0,0,0,0],
+					bpm : 140,
+					sample : 8000,
+					sampleRate : 44100
+				}
+			);
+			localStorage.setItem('presenterData',JSON.stringify(data));
 
 			var src = []; // bufferSource、音源
 			for(var c=0; c<4; c++){
@@ -310,6 +311,7 @@
 					element.step = .001;
 					element.value = data.pan[c];
 					element.onmousemove = confirm;
+					element.onclick = confirm;
 					element.ondblclick = function(_e){
 						_e.target.value = .5;
 						confirm(_e);
@@ -339,6 +341,7 @@
 					element.step = .001;
 					element.value = data.vol[c];
 					element.onmousemove = confirm;
+					element.onclick = confirm;
 					element.ondblclick = function(_e){
 						_e.target.value = .5;
 						confirm(_e);
@@ -487,8 +490,12 @@
 							prev += intrv;
 						}
 						for(var c=0; c<4; c++){
-							gain[c][step].gain.cancelScheduledValues(0);
-							gain[c][step].gain.setTargetAtTime(0,0,1E-3);
+							if(data.formula[c][(step+1)%16] != ''){
+								for(var s=0; s<16; s++){
+									gain[c][s].gain.cancelScheduledValues(0);
+									gain[c][s].gain.setTargetAtTime(0,0,1E-3);
+								}
+							}
 							id('formula,'+c+','+step).style.background = '#444444';
 							id('param,'+c+','+step).style.background = '#444444';
 						}
@@ -562,6 +569,15 @@
 			}
 			resize();
 			window.onresize = resize;
+
+			function loadData(_load,_def){
+				var data = _load;
+				if(!data){ data = {}; }
+				for(var i in _def){
+					if(!data[i]){ data[i] = _def[i]; }
+				}
+				return data;
+			}
 		</script>
 	</body>
 </html>
